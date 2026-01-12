@@ -1,217 +1,206 @@
 (function() {
     'use strict';
 
-    var plugin_name = 'UA IPTV';
-    var M3U_URL = 'https://mater.com.ua/ip/ua.m3u';
+    // Чекаємо завантаження Lampa
+    function startPlugin() {
+        if (!window.Lampa) {
+            setTimeout(startPlugin, 300);
+            return;
+        }
 
-    function init() {
-        if (!window.Lampa) return setTimeout(init, 500);
+        var manifest = {
+            type: 'video',
+            version: '1.0.2',
+            name: 'UA IPTV',
+            description: 'Ukrainian IPTV channels from mater.com.ua',
+            component: 'ua_iptv',
+            icon: '<svg width="36" height="36" viewBox="0 0 36 36"><rect width="36" height="36" rx="4" fill="white" opacity="0.3"/></svg>'
+        };
 
-        // Реєструємо компонент
-        Lampa.Component.add('ua_iptv_main', component);
+        var M3U_URL = 'https://mater.com.ua/ip/ua.m3u';
 
-        // Додаємо пункт в меню
-        Lampa.Listener.follow('app', function(e) {
-            if (e.type === 'ready') {
-                var ico = '<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="36" height="36" rx="4" fill="currentColor"/><path d="M8 12h20v2H8v-2zm0 5h20v2H8v-2zm0 5h20v2H8v-2z" fill="white"/></svg>';
+        // Реєструємо плагін
+        Lampa.Manifest.plugins = manifest;
 
-                Lampa.Template.add('menu_ua_iptv', '<li class="menu__item selector" data-action="ua_iptv">' +
-                    '<div class="menu__ico">' + ico + '</div>' +
-                    '<div class="menu__text">' + plugin_name + '</div>' +
-                '</li>');
+        // Додаємо в меню при старті
+        function addToMenu() {
+            var item = $('<li class="menu__item selector" data-action="ua_iptv"><div class="menu__ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="24" height="24" rx="2" fill="currentColor"/><path d="M6 8h12v2H6V8zm0 4h12v2H6v-2zm0 4h12v2H6v-2z" fill="white"/></svg></div><div class="menu__text">UA IPTV</div></li>');
 
-                $('.menu .menu__list').eq(0).append(Lampa.Template.get('menu_ua_iptv', {}, true));
+            $('.menu .menu__list').eq(0).append(item);
 
-                $('body').on('click', '[data-action="ua_iptv"]', function() {
-                    Lampa.Activity.push({
-                        url: '',
-                        title: plugin_name,
-                        component: 'ua_iptv_main',
-                        page: 1
-                    });
+            item.on('hover:enter', function() {
+                Lampa.Activity.push({
+                    url: '',
+                    title: 'UA IPTV',
+                    component: 'ua_iptv',
+                    page: 1
                 });
-            }
-        });
-
-        console.log('UA IPTV: Plugin loaded');
-    }
-
-    function parseM3U(text) {
-        var lines = text.split('\n');
-        var channels = [];
-        var current = null;
-
-        for (var i = 0; i < lines.length; i++) {
-            var line = lines[i].trim();
-
-            if (line.startsWith('#EXTINF')) {
-                var groupMatch = line.match(/group-title="([^"]+)"/);
-                var logoMatch = line.match(/tvg-logo="([^"]+)"/);
-                var nameMatch = line.match(/,(.*)$/);
-
-                var group = groupMatch ? groupMatch[1] : 'Загальні';
-                var name = nameMatch ? nameMatch[1].trim() : 'Канал';
-                var logo = logoMatch ? logoMatch[1] : '';
-
-                current = {
-                    title: name,
-                    group: group,
-                    logo: logo
-                };
-            } else if (line.startsWith('http') && current) {
-                current.url = line;
-                channels.push(current);
-                current = null;
-            }
+            });
         }
 
-        return channels;
-    }
+        // Парсинг M3U
+        function parseM3U(text) {
+            var lines = text.split('\n');
+            var channels = [];
+            var current = null;
 
-    function groupChannels(channels) {
-        var groups = {};
-        for (var i = 0; i < channels.length; i++) {
-            var ch = channels[i];
-            var groupName = ch.group || 'Загальні';
-            if (!groups[groupName]) groups[groupName] = [];
-            groups[groupName].push(ch);
-        }
-        return groups;
-    }
+            for (var i = 0; i < lines.length; i++) {
+                var line = lines[i].trim();
 
-    function component(object) {
-        var network = new Lampa.Reguest();
-        var scroll = new Lampa.Scroll({horizontal: false, vertical: true});
-        var items = [];
-        var html = $('<div></div>');
-        var active = 0;
+                if (line.startsWith('#EXTINF')) {
+                    var groupMatch = line.match(/group-title="([^"]+)"/);
+                    var logoMatch = line.match(/tvg-logo="([^"]+)"/);
+                    var nameMatch = line.match(/,(.*)$/);
 
-        this.create = function() {
-            var _this = this;
-
-            this.activity.loader(true);
-
-            scroll.minus();
-            html.append(scroll.render());
-
-            network.silent(M3U_URL, function(data) {
-                _this.activity.loader(false);
-
-                var channels = parseM3U(data);
-                var groups = groupChannels(channels);
-                var groupNames = Object.keys(groups);
-
-                if (groupNames.length === 0) {
-                    html.append('<div class="empty">Немає каналів</div>');
-                    return;
-                }
-
-                groupNames.forEach(function(groupName) {
-                    var groupChannels = groups[groupName];
-
-                    var line = new Lampa.Line({
-                        title: groupName + ' (' + groupChannels.length + ')',
-                        results: groupChannels,
-                        card_wide: true
-                    });
-
-                    line.create = function() {
-                        var line_this = this;
-
-                        groupChannels.forEach(function(channel) {
-                            var card = Lampa.Template.get('card', {
-                                title: channel.title,
-                                release_year: ''
-                            });
-
-                            var poster = channel.logo ? channel.logo : './img/img_broken.svg';
-                            card.find('.card__img').css('background-image', 'url(' + poster + ')');
-                            card.addClass('card--wide');
-
-                            card.on('hover:focus', function() {
-                                active = items.indexOf(line);
-                                scroll.update(line.render(), true);
-                            });
-
-                            card.on('hover:enter', function() {
-                                if (channel.url) {
-                                    Lampa.Player.play({
-                                        title: channel.title,
-                                        url: channel.url
-                                    });
-                                    Lampa.Player.playlist([{
-                                        title: channel.title,
-                                        url: channel.url
-                                    }]);
-                                } else {
-                                    Lampa.Noty.show('Немає посилання');
-                                }
-                            });
-
-                            line_this.append(card);
-                        });
+                    current = {
+                        title: nameMatch ? nameMatch[1].trim() : 'Channel',
+                        group: groupMatch ? groupMatch[1] : 'Загальні',
+                        logo: logoMatch ? logoMatch[1] : ''
                     };
+                } else if (line.startsWith('http') && current) {
+                    current.url = line;
+                    channels.push(current);
+                    current = null;
+                }
+            }
 
-                    line.render().find('.card').addClass('card--wide');
-                    scroll.append(line.render());
-                    items.push(line);
+            return channels;
+        }
+
+        function groupChannels(channels) {
+            var groups = {};
+            channels.forEach(function(ch) {
+                var g = ch.group || 'Загальні';
+                if (!groups[g]) groups[g] = [];
+                groups[g].push(ch);
+            });
+            return groups;
+        }
+
+        // Компонент
+        function component(object) {
+            var network = new Lampa.Reguest();
+            var scroll = new Lampa.Scroll({horizontal: false, vertical: true});
+            var items = [];
+            var html = $('<div></div>');
+
+            this.create = function() {
+                var self = this;
+                this.activity.loader(true);
+
+                scroll.minus();
+                html.append(scroll.render());
+
+                network.native(M3U_URL, function(data) {
+                    self.activity.loader(false);
+
+                    try {
+                        var channels = parseM3U(data);
+                        var groups = groupChannels(channels);
+
+                        Object.keys(groups).forEach(function(groupName) {
+                            var cards = groups[groupName];
+
+                            var line = new Lampa.Line({
+                                title: groupName + ' · ' + cards.length
+                            });
+
+                            line.create = function() {
+                                cards.forEach(function(ch) {
+                                    var card = Lampa.Template.get('card', {
+                                        title: ch.title,
+                                        release_year: ''
+                                    });
+
+                                    card.addClass('card--category');
+
+                                    if (ch.logo) {
+                                        card.find('.card__img').css({
+                                            'background-image': 'url(' + ch.logo + ')',
+                                            'background-size': 'contain',
+                                            'background-position': 'center'
+                                        });
+                                    }
+
+                                    card.on('hover:enter', function() {
+                                        if (ch.url) {
+                                            Lampa.Player.play({
+                                                title: ch.title,
+                                                url: ch.url
+                                            });
+                                        }
+                                    });
+
+                                    this.append(card);
+                                }, this);
+                            };
+
+                            scroll.append(line.render());
+                            items.push(line);
+                        });
+
+                    } catch(e) {
+                        console.error('Parse error:', e);
+                        Lampa.Noty.show('Помилка парсингу M3U');
+                    }
+
+                }, function(e) {
+                    self.activity.loader(false);
+                    console.error('Load error:', e);
+                    Lampa.Noty.show('Помилка завантаження');
+                }, false, {
+                    dataType: 'text'
+                });
+            };
+
+            this.start = function() {
+                Lampa.Controller.add('content', {
+                    toggle: function() {
+                        Lampa.Controller.collectionSet(scroll.render());
+                        Lampa.Controller.collectionFocus(false, scroll.render());
+                    },
+                    left: function() {
+                        if (Navigator.canmove('left')) Navigator.move('left');
+                        else Lampa.Controller.toggle('menu');
+                    },
+                    up: function() {
+                        if (Navigator.canmove('up')) Navigator.move('up');
+                        else Lampa.Controller.toggle('head');
+                    },
+                    down: function() {
+                        Navigator.move('down');
+                    },
+                    right: function() {
+                        Navigator.move('right');
+                    },
+                    back: function() {
+                        Lampa.Activity.backward();
+                    }
                 });
 
-            }, function(error) {
-                _this.activity.loader(false);
-                Lampa.Noty.show('Помилка завантаження: ' + (error.responseText || error.statusText || 'Network error'));
-            });
-        };
+                Lampa.Controller.toggle('content');
+            };
 
-        this.start = function() {
-            Lampa.Controller.add('content', {
-                toggle: function() {
-                    Lampa.Controller.collectionSet(scroll.render());
-                    Lampa.Controller.collectionFocus(active, scroll.render());
-                },
-                left: function() {
-                    if (Navigator.canmove('left')) Navigator.move('left');
-                    else Lampa.Controller.toggle('menu');
-                },
-                right: function() {
-                    Navigator.move('right');
-                },
-                up: function() {
-                    if (Navigator.canmove('up')) Navigator.move('up');
-                    else Lampa.Controller.toggle('head');
-                },
-                down: function() {
-                    Navigator.move('down');
-                },
-                back: function() {
-                    Lampa.Activity.backward();
-                }
-            });
+            this.pause = function() {};
+            this.stop = function() {};
+            this.render = function() { return html; };
+            this.destroy = function() {
+                network.clear();
+                scroll.destroy();
+                html.remove();
+            };
+        }
 
-            Lampa.Controller.toggle('content');
-        };
+        Lampa.Component.add('ua_iptv', component);
 
-        this.pause = function() {};
+        // Додаємо в меню після завантаження
+        if (Lampa.Controller) {
+            setTimeout(addToMenu, 1000);
+        }
 
-        this.stop = function() {};
-
-        this.render = function() {
-            return html;
-        };
-
-        this.destroy = function() {
-            network.clear();
-            scroll.destroy();
-            html.remove();
-            items = [];
-        };
+        console.log('UA IPTV plugin loaded successfully');
     }
 
-    if (window.appready) init();
-    else {
-        Lampa.Listener.follow('app', function(e) {
-            if (e.type === 'ready') init();
-        });
-    }
+    startPlugin();
 
 })();
