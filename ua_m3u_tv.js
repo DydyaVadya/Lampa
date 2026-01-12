@@ -2,8 +2,8 @@
     'use strict';
 
     //var M3U_URL = 'https://mater.com.ua/ip/ua.m3u';
-    //var M3U_URL = 'http://iptv.cc.ua/qwe/channels.m3u';
-    var M3U_URL = 'https://iptv.org.ua/iptv/ua.m3u';
+    var M3U_URL = 'http://iptv.cc.ua/qwe/channels.m3u';
+    //var M3U_URL = 'https://iptv.org.ua/iptv/ua.m3u';
     
 
     function startPlugin() {
