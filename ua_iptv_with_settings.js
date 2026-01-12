@@ -3,7 +3,6 @@
 
     //var DEFAULT_M3U_URL = 'https://mater.com.ua/ip/ua.m3u';
     var DEFAULT_M3U_URL = 'https://iptv.org.ua/iptv/ua.m3u';
-     //var DEFAULT_M3U_URL = 'http://playlist.tv.uainet.net/get/playlist.m3u';
     var STORAGE_KEY = 'ua_iptv_m3u_url';
 
     function safeGet(key, def){
