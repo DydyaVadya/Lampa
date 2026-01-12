@@ -1,49 +1,61 @@
 (function() {
     'use strict';
 
-    var pluginName = 'UA IPTV';
+    var plugin_name = 'UA IPTV';
     var M3U_URL = 'https://mater.com.ua/ip/ua.m3u';
 
     function init() {
         if (!window.Lampa) return setTimeout(init, 500);
 
-        // Додаємо компонент в Lampa
+        // Реєструємо компонент
         Lampa.Component.add('ua_iptv_main', component);
 
-        // Додаємо у меню
-        var manifest = {
-            type: 'iptv',
-            version: '1.0.0',
-            name: 'UA IPTV',
-            description: 'Ukrainian IPTV channels',
-            component: 'ua_iptv_main'
-        };
-        Lampa.Manifest.plugins = manifest;
+        // Додаємо пункт в меню
+        Lampa.Listener.follow('app', function(e) {
+            if (e.type === 'ready') {
+                var ico = '<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="36" height="36" rx="4" fill="currentColor"/><path d="M8 12h20v2H8v-2zm0 5h20v2H8v-2zm0 5h20v2H8v-2z" fill="white"/></svg>';
 
-        console.log('UA IPTV: Plugin initialized');
+                Lampa.Template.add('menu_ua_iptv', '<li class="menu__item selector" data-action="ua_iptv">' +
+                    '<div class="menu__ico">' + ico + '</div>' +
+                    '<div class="menu__text">' + plugin_name + '</div>' +
+                '</li>');
+
+                $('.menu .menu__list').eq(0).append(Lampa.Template.get('menu_ua_iptv', {}, true));
+
+                $('body').on('click', '[data-action="ua_iptv"]', function() {
+                    Lampa.Activity.push({
+                        url: '',
+                        title: plugin_name,
+                        component: 'ua_iptv_main',
+                        page: 1
+                    });
+                });
+            }
+        });
+
+        console.log('UA IPTV: Plugin loaded');
     }
 
     function parseM3U(text) {
         var lines = text.split('\n');
         var channels = [];
         var current = null;
-        var currentGroup = 'TV';
 
-        lines.forEach(function(line) {
-            line = line.trim();
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i].trim();
 
             if (line.startsWith('#EXTINF')) {
                 var groupMatch = line.match(/group-title="([^"]+)"/);
                 var logoMatch = line.match(/tvg-logo="([^"]+)"/);
                 var nameMatch = line.match(/,(.*)$/);
 
-                currentGroup = groupMatch ? groupMatch[1] : 'TV';
-                var name = nameMatch ? nameMatch[1].trim() : 'Channel';
+                var group = groupMatch ? groupMatch[1] : 'Загальні';
+                var name = nameMatch ? nameMatch[1].trim() : 'Канал';
                 var logo = logoMatch ? logoMatch[1] : '';
 
                 current = {
                     title: name,
-                    group: currentGroup,
+                    group: group,
                     logo: logo
                 };
             } else if (line.startsWith('http') && current) {
@@ -51,131 +63,118 @@
                 channels.push(current);
                 current = null;
             }
-        });
+        }
 
         return channels;
     }
 
     function groupChannels(channels) {
         var groups = {};
-        channels.forEach(function(ch) {
-            var groupName = ch.group || 'TV';
+        for (var i = 0; i < channels.length; i++) {
+            var ch = channels[i];
+            var groupName = ch.group || 'Загальні';
             if (!groups[groupName]) groups[groupName] = [];
             groups[groupName].push(ch);
-        });
+        }
         return groups;
     }
 
-    function loadM3U(callback) {
-        Lampa.Network.silent(M3U_URL, function(data) {
-            callback(parseM3U(data));
-        }, function(error) {
-            console.error('UA IPTV: Failed to load M3U', error);
-            Lampa.Noty.show('Помилка завантаження плейліста');
-        });
-    }
-
-    function mapChannelToCard(channel) {
-        return {
-            title: channel.title,
-            poster: channel.logo || '',
-            cover: channel.logo || '',
-            img: channel.logo || '',
-            url: channel.url,
-            group: channel.group,
-            params: {
-                style: {
-                    name: 'wide'
-                }
-            }
-        };
-    }
-
-    function playChannel(cardData) {
-        if (!cardData || !cardData.url) {
-            Lampa.Noty.show('Немає посилання на трансляцію');
-            return;
-        }
-
-        var data = {
-            title: cardData.title,
-            url: cardData.url
-        };
-
-        Lampa.Player.play(data);
-        Lampa.Player.playlist([data]);
-    }
-
     function component(object) {
-        var comp = Lampa.Component.get('category');
-        var html = comp.render().addClass('ua-iptv-activity');
+        var network = new Lampa.Reguest();
         var scroll = new Lampa.Scroll({horizontal: false, vertical: true});
         var items = [];
+        var html = $('<div></div>');
+        var active = 0;
 
         this.create = function() {
-            Lampa.Background.change('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQYV2NgYGD4DwABBAEAw8g15QAAAABJRU5ErkJggg==');
+            var _this = this;
 
+            this.activity.loader(true);
+
+            scroll.minus();
             html.append(scroll.render());
 
-            loadM3U(function(channels) {
+            network.silent(M3U_URL, function(data) {
+                _this.activity.loader(false);
+
+                var channels = parseM3U(data);
                 var groups = groupChannels(channels);
+                var groupNames = Object.keys(groups);
 
-                Object.keys(groups).forEach(function(groupName) {
-                    var groupChannels = groups[groupName];
-                    var lineData = {
-                        title: groupName + ' · ' + groupChannels.length,
-                        results: groupChannels.map(mapChannelToCard),
-                        total_pages: 1
-                    };
-
-                    buildLine(lineData);
-                });
-
-                if (items.length === 0) {
+                if (groupNames.length === 0) {
                     html.append('<div class="empty">Немає каналів</div>');
+                    return;
                 }
-            });
-        };
 
-        function buildLine(lineData) {
-            var line = new Lampa.Line(lineData);
+                groupNames.forEach(function(groupName) {
+                    var groupChannels = groups[groupName];
 
-            line.create = function() {
-                var _this = this;
-
-                lineData.results.forEach(function(element) {
-                    var card = new Lampa.Card(element, {
-                        card_wide: true,
-                        card_type: 'custom'
+                    var line = new Lampa.Line({
+                        title: groupName + ' (' + groupChannels.length + ')',
+                        results: groupChannels,
+                        card_wide: true
                     });
 
-                    card.create();
+                    line.create = function() {
+                        var line_this = this;
 
-                    card.onEnter = function() {
-                        playChannel(element);
+                        groupChannels.forEach(function(channel) {
+                            var card = Lampa.Template.get('card', {
+                                title: channel.title,
+                                release_year: ''
+                            });
+
+                            var poster = channel.logo ? channel.logo : './img/img_broken.svg';
+                            card.find('.card__img').css('background-image', 'url(' + poster + ')');
+                            card.addClass('card--wide');
+
+                            card.on('hover:focus', function() {
+                                active = items.indexOf(line);
+                                scroll.update(line.render(), true);
+                            });
+
+                            card.on('hover:enter', function() {
+                                if (channel.url) {
+                                    Lampa.Player.play({
+                                        title: channel.title,
+                                        url: channel.url
+                                    });
+                                    Lampa.Player.playlist([{
+                                        title: channel.title,
+                                        url: channel.url
+                                    }]);
+                                } else {
+                                    Lampa.Noty.show('Немає посилання');
+                                }
+                            });
+
+                            line_this.append(card);
+                        });
                     };
 
-                    card.onMenu = function() {
-                        return false;
-                    };
-
-                    _this.append(card.render());
+                    line.render().find('.card').addClass('card--wide');
+                    scroll.append(line.render());
+                    items.push(line);
                 });
-            };
 
-            line.render().find('.items-line__title').text(lineData.title);
-            scroll.append(line.render());
-            items.push(line);
-        }
+            }, function(error) {
+                _this.activity.loader(false);
+                Lampa.Noty.show('Помилка завантаження: ' + (error.responseText || error.statusText || 'Network error'));
+            });
+        };
 
         this.start = function() {
             Lampa.Controller.add('content', {
                 toggle: function() {
                     Lampa.Controller.collectionSet(scroll.render());
-                    Lampa.Controller.collectionFocus(false, scroll.render());
+                    Lampa.Controller.collectionFocus(active, scroll.render());
                 },
                 left: function() {
-                    Lampa.Controller.toggle('menu');
+                    if (Navigator.canmove('left')) Navigator.move('left');
+                    else Lampa.Controller.toggle('menu');
+                },
+                right: function() {
+                    Navigator.move('right');
                 },
                 up: function() {
                     if (Navigator.canmove('up')) Navigator.move('up');
@@ -193,17 +192,26 @@
         };
 
         this.pause = function() {};
+
         this.stop = function() {};
+
         this.render = function() {
             return html;
         };
+
         this.destroy = function() {
+            network.clear();
             scroll.destroy();
             html.remove();
             items = [];
         };
     }
 
-    init();
+    if (window.appready) init();
+    else {
+        Lampa.Listener.follow('app', function(e) {
+            if (e.type === 'ready') init();
+        });
+    }
 
 })();
