@@ -1,21 +1,7 @@
 (function() {
     'use strict';
 
-    var CHANNELS = [
-        {title: 'ПЕРШИЙ', url: 'https://tva.in.ua/live/first.m3u8', group: 'Українські'},
-        {title: 'ІНТЕР', url: 'http://194.50.51.34/playlist.m3u8', group: 'Українські'},
-        {title: '1+1', url: 'http://50.7.28.226/8482/index.m3u8', group: 'Українські'},
-        {title: '2+2', url: 'http://50.7.28.226/8117/index.m3u8', group: 'Українські'},
-        {title: 'TET', url: 'http://50.7.28.226/8138/index.m3u8', group: 'Українські'},
-        {title: 'БОЛТ', url: 'http://50.7.28.226/9329/index.m3u8', group: 'Українські'},
-        {title: '5 Канал', url: 'https://api-tv.ipnet.ua/api/v1/manifest/2118742539.m3u8', group: 'Українські'},
-        {title: '24 канал', url: 'http://streamvideol1.luxnet.ua/news24/news24.stream/chunklist.m3u8', group: 'Новини'},
-        {title: 'Eurosport 1', url: 'http://178.134.1.158:8081/eurosport/index.m3u8', group: 'Спорт'},
-        {title: 'SETANTA 1', url: 'http://vod.splay.uz/live_splay/original/Setanta1HD/tracks-v1a1/mono.m3u8', group: 'Спорт'},
-        {title: 'ПЛЮС ПЛЮС', url: 'http://50.7.28.226/9455/index.m3u8', group: 'Дитячі'},
-        {title: 'Flash Radio', url: 'https://online.radioplayer.ua/FlashRadio_HD', group: 'Радіо'},
-        {title: 'Nashe Radio', url: 'http://online.nasheradio.ua/NasheRadio_HD', group: 'Радіо'}
-    ];
+    var M3U_URL = 'https://mater.com.ua/ip/ua.m3u';
 
     function startPlugin() {
         if (!window.Lampa) {
@@ -23,61 +9,145 @@
             return;
         }
 
+        // Парсинг M3U
+        function parseM3U(text) {
+            var lines = text.split('\n');
+            var channels = [];
+            var current = null;
+
+            for (var i = 0; i < lines.length; i++) {
+                var line = lines[i].trim();
+
+                if (line.startsWith('#EXTINF')) {
+                    var groupMatch = line.match(/group-title="([^"]+)"/);
+                    var logoMatch = line.match(/tvg-logo="([^"]+)"/);
+                    var nameMatch = line.match(/,(.*)$/);
+
+                    current = {
+                        title: nameMatch ? nameMatch[1].trim() : 'Channel',
+                        group: groupMatch ? groupMatch[1] : 'Загальні',
+                        logo: logoMatch ? logoMatch[1] : ''
+                    };
+                } else if (line.startsWith('http') && current) {
+                    current.url = line;
+                    channels.push(current);
+                    current = null;
+                }
+            }
+
+            console.log('UA IPTV: Parsed', channels.length, 'channels');
+            return channels;
+        }
+
         var Component = function(obj) {
             var html = $('<div class="category-full"></div>');
             var scroll = new Lampa.Scroll({horizontal: false, vertical: true});
 
             this.create = function() {
+                var self = this;
                 scroll.minus();
                 html.append(scroll.render());
 
-                // Групуємо канали
-                var groups = {};
-                for (var i = 0; i < CHANNELS.length; i++) {
-                    var ch = CHANNELS[i];
-                    if (!groups[ch.group]) groups[ch.group] = [];
-                    groups[ch.group].push(ch);
-                }
+                this.activity.loader(true);
 
-                // Створюємо HTML для кожної групи
-                for (var groupName in groups) {
-                    var channels = groups[groupName];
+                console.log('UA IPTV: Loading from', M3U_URL);
 
-                    // Заголовок групи
-                    var title = $('<div class="category-full__title" style="padding: 1em 2em; font-size: 1.5em; color: white;">' + 
-                        groupName + ' · ' + channels.length + '</div>');
-                    scroll.append(title);
+                // Завантаження M3U з CORS proxy
+                var proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(M3U_URL);
 
-                    // Контейнер для карток
-                    var cards = $('<div class="category-full__cards" style="display: flex; flex-wrap: wrap; padding: 0 2em;"></div>');
+                $.ajax({
+                    url: proxyUrl,
+                    type: 'GET',
+                    dataType: 'text',
+                    timeout: 15000,
+                    success: function(data) {
+                        console.log('UA IPTV: Loaded successfully');
+                        self.activity.loader(false);
 
-                    for (var j = 0; j < channels.length; j++) {
-                        var channel = channels[j];
+                        try {
+                            var channels = parseM3U(data);
 
-                        var card = $('<div class="card selector" style="margin: 0.5em; width: 200px; cursor: pointer;">' +
-                            '<div class="card__view" style="padding-bottom: 56%;">' +
-                            '<div class="card__img" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);"></div>' +
-                            '</div>' +
-                            '<div class="card__title" style="padding: 0.5em; color: white; text-align: center;">' + 
-                            channel.title + '</div>' +
-                            '</div>');
+                            if (channels.length === 0) {
+                                html.append('<div style="padding: 2em; color: white; text-align: center;">Немає каналів</div>');
+                                return;
+                            }
 
-                        card.data('channel', channel);
+                            // Групування
+                            var groups = {};
+                            for (var i = 0; i < channels.length; i++) {
+                                var ch = channels[i];
+                                if (!groups[ch.group]) groups[ch.group] = [];
+                                groups[ch.group].push(ch);
+                            }
 
-                        card.on('hover:enter click', function() {
-                            var ch = $(this).data('channel');
-                            console.log('Playing:', ch.title, ch.url);
-                            Lampa.Player.play({
-                                title: ch.title,
-                                url: ch.url
-                            });
-                        });
+                            // Рендеринг
+                            for (var groupName in groups) {
+                                var groupChannels = groups[groupName];
 
-                        cards.append(card);
+                                // Заголовок
+                                var title = $('<div class="category-full__title" style="padding: 1em 2em; font-size: 1.5em; color: white;">' + 
+                                    groupName + ' · ' + groupChannels.length + '</div>');
+                                scroll.append(title);
+
+                                // Картки
+                                var cards = $('<div class="category-full__cards" style="display: flex; flex-wrap: wrap; padding: 0 2em;"></div>');
+
+                                for (var j = 0; j < groupChannels.length; j++) {
+                                    var channel = groupChannels[j];
+
+                                    var card = $('<div class="card selector" style="margin: 0.5em; width: 200px;">' +
+                                        '<div class="card__view" style="padding-bottom: 56%;">' +
+                                        '<div class="card__img" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);"></div>' +
+                                        '</div>' +
+                                        '<div class="card__title" style="padding: 0.5em; color: white; text-align: center; font-size: 0.9em;">' + 
+                                        channel.title + '</div>' +
+                                        '</div>');
+
+                                    if (channel.logo) {
+                                        card.find('.card__img').css({
+                                            'background-image': 'url(' + channel.logo + ')',
+                                            'background-size': 'contain',
+                                            'background-repeat': 'no-repeat',
+                                            'background-position': 'center',
+                                            'background-color': '#1a1a2e'
+                                        });
+                                    }
+
+                                    card.data('channel', channel);
+
+                                    card.on('hover:enter click', function() {
+                                        var ch = $(this).data('channel');
+                                        console.log('Playing:', ch.title);
+                                        Lampa.Player.play({
+                                            title: ch.title,
+                                            url: ch.url
+                                        });
+                                    });
+
+                                    cards.append(card);
+                                }
+
+                                scroll.append(cards);
+                            }
+
+                            console.log('UA IPTV: Rendered', channels.length, 'channels');
+
+                        } catch(e) {
+                            console.error('UA IPTV: Parse error', e);
+                            Lampa.Noty.show('Помилка обробки списку');
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('UA IPTV: Load failed', status, error);
+                        self.activity.loader(false);
+
+                        var msg = 'Не вдалося завантажити список каналів';
+                        if (status === 'timeout') msg = 'Перевищено час очікування';
+
+                        Lampa.Noty.show(msg);
+                        html.append('<div style="padding: 2em; color: white; text-align: center;">' + msg + '</div>');
                     }
-
-                    scroll.append(cards);
-                }
+                });
             };
 
             this.start = function() {
@@ -104,7 +174,7 @@
 
         Lampa.Component.add('ua_iptv', Component);
 
-        // Додаємо в меню
+        // Меню
         setTimeout(function() {
             var item = '<li class="menu__item selector" data-action="ua_iptv">' +
                 '<div class="menu__ico">' +
@@ -116,8 +186,6 @@
                 '</li>';
 
             $('[data-action="ua_iptv"]').remove();
-            $('[data-action="ua_iptv_test"]').remove();
-
             $('.menu .menu__list').eq(0).append(item);
 
             $('body').off('hover:enter click', '[data-action="ua_iptv"]');
@@ -131,7 +199,7 @@
                 });
             });
 
-            console.log('UA IPTV: Plugin loaded successfully');
+            console.log('UA IPTV: Ready');
         }, 2000);
     }
 
