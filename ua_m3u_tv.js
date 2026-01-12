@@ -1,3 +1,5 @@
+console.log('UA IPTV plugin loaded, Lampa:', !!window.Lampa, 'Menu:', !!(window.Lampa && Lampa.Menu));
+
 (function() {
     'use strict';
 
