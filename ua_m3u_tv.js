@@ -1,7 +1,6 @@
 (function() {
     'use strict';
 
-    // Вбудовані канали
     var CHANNELS = [
         {title: 'ПЕРШИЙ', url: 'https://tva.in.ua/live/first.m3u8', group: 'Українські'},
         {title: 'ІНТЕР', url: 'http://194.50.51.34/playlist.m3u8', group: 'Українські'},
@@ -25,7 +24,7 @@
         }
 
         var Component = function(obj) {
-            var html = $('<div></div>');
+            var html = $('<div class="category-full"></div>');
             var scroll = new Lampa.Scroll({horizontal: false, vertical: true});
 
             this.create = function() {
@@ -40,39 +39,44 @@
                     groups[ch.group].push(ch);
                 }
 
-                // Рендеримо групи
+                // Створюємо HTML для кожної групи
                 for (var groupName in groups) {
                     var channels = groups[groupName];
-                    var line = new Lampa.Line({
-                        title: groupName + ' · ' + channels.length
-                    });
 
-                    line.create = function() {
-                        var lineChannels = this.channels;
-                        for (var j = 0; j < lineChannels.length; j++) {
-                            var channel = lineChannels[j];
-                            var card = Lampa.Template.get('card', {
-                                title: channel.title,
-                                release_year: ''
+                    // Заголовок групи
+                    var title = $('<div class="category-full__title" style="padding: 1em 2em; font-size: 1.5em; color: white;">' + 
+                        groupName + ' · ' + channels.length + '</div>');
+                    scroll.append(title);
+
+                    // Контейнер для карток
+                    var cards = $('<div class="category-full__cards" style="display: flex; flex-wrap: wrap; padding: 0 2em;"></div>');
+
+                    for (var j = 0; j < channels.length; j++) {
+                        var channel = channels[j];
+
+                        var card = $('<div class="card selector" style="margin: 0.5em; width: 200px; cursor: pointer;">' +
+                            '<div class="card__view" style="padding-bottom: 56%;">' +
+                            '<div class="card__img" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);"></div>' +
+                            '</div>' +
+                            '<div class="card__title" style="padding: 0.5em; color: white; text-align: center;">' + 
+                            channel.title + '</div>' +
+                            '</div>');
+
+                        card.data('channel', channel);
+
+                        card.on('hover:enter click', function() {
+                            var ch = $(this).data('channel');
+                            console.log('Playing:', ch.title, ch.url);
+                            Lampa.Player.play({
+                                title: ch.title,
+                                url: ch.url
                             });
+                        });
 
-                            card.addClass('card--category');
-                            card.data('channel', channel);
+                        cards.append(card);
+                    }
 
-                            card.on('hover:enter', function() {
-                                var ch = $(this).data('channel');
-                                Lampa.Player.play({
-                                    title: ch.title,
-                                    url: ch.url
-                                });
-                            });
-
-                            this.append(card);
-                        }
-                    };
-
-                    line.channels = channels;
-                    scroll.append(line.render());
+                    scroll.append(cards);
                 }
             };
 
@@ -100,7 +104,7 @@
 
         Lampa.Component.add('ua_iptv', Component);
 
-        // Меню
+        // Додаємо в меню
         setTimeout(function() {
             var item = '<li class="menu__item selector" data-action="ua_iptv">' +
                 '<div class="menu__ico">' +
@@ -110,6 +114,9 @@
                 '</div>' +
                 '<div class="menu__text">UA IPTV</div>' +
                 '</li>';
+
+            $('[data-action="ua_iptv"]').remove();
+            $('[data-action="ua_iptv_test"]').remove();
 
             $('.menu .menu__list').eq(0).append(item);
 
@@ -123,6 +130,8 @@
                     page: 1
                 });
             });
+
+            console.log('UA IPTV: Plugin loaded successfully');
         }, 2000);
     }
 
