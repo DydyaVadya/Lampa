@@ -2,7 +2,7 @@
     'use strict';
 
     // НАЛАШТУВАННЯ - вкажіть URL сайту з популярними фільмами
-    var MOVIES_URL = 'https://example.com/apple-tv-popular'; // Замініть на реальний URL
+    var MOVIES_URL = 'https://tv.apple.com/ua/collection/самое-популярное-сеичас/uts.col.ChartsShows.tvs.sbd.4000?l=ru'; // Замініть на реальний URL
 
     function waitLampa(callback) {
         if (window.Lampa && Lampa.Component && Lampa.Activity) {
